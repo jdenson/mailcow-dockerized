@@ -1,19 +1,18 @@
-version: '3'
+version: '2.1'
 services:
 
     unbound-mailcow:
       image: mailcow/unbound:1.15
       environment:
         - TZ=${TZ}
-      deploy:
-        replicas: 1
       volumes:
         - ./data/hooks/unbound:/hooks:Z
         - ./data/conf/unbound/unbound.conf:/etc/unbound/unbound.conf:ro,Z
+      restart: always
       tty: true
       networks:
         mailcow-network:
-          ipv4_address: ${IPV4_NETWORK}.254
+          ipv4_address: ${IPV4_NETWORK:-172.22.1}.254
           aliases:
             - unbound
 
@@ -33,10 +32,9 @@ services:
         - MYSQL_USER=${DBUSER}
         - MYSQL_PASSWORD=${DBPASS}
         - MYSQL_INITDB_SKIP_TZINFO=1
-      deploy:
-        replicas: 1
-        placement:
-          constraints: [node.role == manager]
+      restart: always
+      ports:
+        - "${SQL_PORT:-127.0.0.1:13306}:3306"
       networks:
         mailcow-network:
           aliases:
@@ -46,29 +44,27 @@ services:
       image: redis:6-alpine
       volumes:
         - redis-vol-1:/data/:Z
+      restart: always
       ports:
-        - ${REDIS_PORT}:6379
-      deploy:
-        replicas: 1
+        - "${REDIS_PORT:-127.0.0.1:7654}:6379"
       environment:
         - TZ=${TZ}
       sysctls:
         - net.core.somaxconn=4096
       networks:
         mailcow-network:
-          ipv4_address: ${IPV4_NETWORK}.249
+          ipv4_address: ${IPV4_NETWORK:-172.22.1}.249
           aliases:
             - redis
 
     clamd-mailcow:
       image: mailcow/clamd:1.50
+      restart: always
       dns:
-        - ${IPV4_NETWORK}.254
+        - ${IPV4_NETWORK:-172.22.1}.254
       environment:
         - TZ=${TZ}
-        - SKIP_CLAMD=${SKIP_CLAMD}
-      deploy:
-        replicas: 1
+        - SKIP_CLAMD=${SKIP_CLAMD:-n}
       volumes:
         - ./data/conf/clamav/:/etc/clamav/:Z
         - clamd-db-vol-1:/var/lib/clamav:z
@@ -82,14 +78,12 @@ services:
       stop_grace_period: 30s
       depends_on:
         - dovecot-mailcow
-      deploy:
-        replicas: 1
       environment:
         - TZ=${TZ}
-        - IPV4_NETWORK=${IPV4_NETWORK}
-        - IPV6_NETWORK=${IPV6_NETWORK}
-        - REDIS_SLAVEOF_IP=${REDIS_SLAVEOF_IP}
-        - REDIS_SLAVEOF_PORT=${REDIS_SLAVEOF_PORT}
+        - IPV4_NETWORK=${IPV4_NETWORK:-172.22.1}
+        - IPV6_NETWORK=${IPV6_NETWORK:-fd4d:6169:6c63:6f77::/64}
+        - REDIS_SLAVEOF_IP=${REDIS_SLAVEOF_IP:-}
+        - REDIS_SLAVEOF_PORT=${REDIS_SLAVEOF_PORT:-}
       volumes:
         - ./data/hooks/rspamd:/hooks:Z
         - ./data/conf/rspamd/custom/:/etc/rspamd/custom:z
@@ -100,9 +94,10 @@ services:
         - ./data/conf/rspamd/rspamd.conf.local:/etc/rspamd/rspamd.conf.local:Z
         - ./data/conf/rspamd/rspamd.conf.override:/etc/rspamd/rspamd.conf.override:Z
         - rspamd-vol-1:/var/lib/rspamd:z
+      restart: always
       hostname: rspamd
       dns:
-        - ${IPV4_NETWORK}.254
+        - ${IPV4_NETWORK:-172.22.1}.254
       networks:
         mailcow-network:
           aliases:
@@ -113,8 +108,6 @@ services:
       command: "php-fpm -d date.timezone=${TZ} -d expose_php=0"
       depends_on:
         - redis-mailcow
-      deploy:
-        replicas: 1
       volumes:
         - ./data/hooks/phpfpm:/hooks:Z
         - ./data/web:/web:z
@@ -134,38 +127,39 @@ services:
         - ./data/assets/templates:/tpls:z
         - ./data/conf/nginx/:/etc/nginx/conf.d/:z
       dns:
-        - ${IPV4_NETWORK}.254
+        - ${IPV4_NETWORK:-172.22.1}.254
       environment:
-        - REDIS_SLAVEOF_IP=${REDIS_SLAVEOF_IP}
-        - REDIS_SLAVEOF_PORT=${REDIS_SLAVEOF_PORT}
-        - LOG_LINES=${LOG_LINES}
+        - REDIS_SLAVEOF_IP=${REDIS_SLAVEOF_IP:-}
+        - REDIS_SLAVEOF_PORT=${REDIS_SLAVEOF_PORT:-}
+        - LOG_LINES=${LOG_LINES:-9999}
         - TZ=${TZ}
         - DBNAME=${DBNAME}
         - DBUSER=${DBUSER}
         - DBPASS=${DBPASS}
         - MAILCOW_HOSTNAME=${MAILCOW_HOSTNAME}
-        - MAILCOW_PASS_SCHEME=${MAILCOW_PASS_SCHEME}
-        - IMAP_PORT=${IMAP_PORT}
-        - IMAPS_PORT=${IMAPS_PORT}
-        - POP_PORT=${POP_PORT}
-        - POPS_PORT=${POPS_PORT}
-        - SIEVE_PORT=${SIEVE_PORT}
-        - IPV4_NETWORK=${IPV4_NETWORK}
-        - IPV6_NETWORK=${IPV6_NETWORK}
-        - SUBMISSION_PORT=${SUBMISSION_PORT}
-        - SMTPS_PORT=${SMTPS_PORT}
-        - SMTP_PORT=${SMTP_PORT}
-        - API_KEY=${API_KEY}
-        - API_KEY_READ_ONLY=${API_KEY_READ_ONLY}
-        - API_ALLOW_FROM=${API_ALLOW_FROM}
-        - COMPOSE_PROJECT_NAME=${COMPOSE_PROJECT_NAME}
-        - SKIP_SOLR=${SKIP_SOLR}
-        - SKIP_CLAMD=${SKIP_CLAMD}
-        - SKIP_SOGO=${SKIP_SOGO}
-        - ALLOW_ADMIN_EMAIL_LOGIN=${ALLOW_ADMIN_EMAIL_LOGIN}
-        - MASTER=${MASTER}
-        - DEV_MODE=${DEV_MODE}
-        - WEBAUTHN_ONLY_TRUSTED_VENDORS=${WEBAUTHN_ONLY_TRUSTED_VENDORS}
+        - MAILCOW_PASS_SCHEME=${MAILCOW_PASS_SCHEME:-BLF-CRYPT}
+        - IMAP_PORT=${IMAP_PORT:-143}
+        - IMAPS_PORT=${IMAPS_PORT:-993}
+        - POP_PORT=${POP_PORT:-110}
+        - POPS_PORT=${POPS_PORT:-995}
+        - SIEVE_PORT=${SIEVE_PORT:-4190}
+        - IPV4_NETWORK=${IPV4_NETWORK:-172.22.1}
+        - IPV6_NETWORK=${IPV6_NETWORK:-fd4d:6169:6c63:6f77::/64}
+        - SUBMISSION_PORT=${SUBMISSION_PORT:-587}
+        - SMTPS_PORT=${SMTPS_PORT:-465}
+        - SMTP_PORT=${SMTP_PORT:-25}
+        - API_KEY=${API_KEY:-invalid}
+        - API_KEY_READ_ONLY=${API_KEY_READ_ONLY:-invalid}
+        - API_ALLOW_FROM=${API_ALLOW_FROM:-invalid}
+        - COMPOSE_PROJECT_NAME=${COMPOSE_PROJECT_NAME:-mailcow-dockerized}
+        - SKIP_SOLR=${SKIP_SOLR:-y}
+        - SKIP_CLAMD=${SKIP_CLAMD:-n}
+        - SKIP_SOGO=${SKIP_SOGO:-n}
+        - ALLOW_ADMIN_EMAIL_LOGIN=${ALLOW_ADMIN_EMAIL_LOGIN:-n}
+        - MASTER=${MASTER:-y}
+        - DEV_MODE=${DEV_MODE:-n}
+        - WEBAUTHN_ONLY_TRUSTED_VENDORS=${WEBAUTHN_ONLY_TRUSTED_VENDORS:-n}
+      restart: always
       networks:
         mailcow-network:
           aliases:
@@ -178,21 +172,19 @@ services:
         - DBUSER=${DBUSER}
         - DBPASS=${DBPASS}
         - TZ=${TZ}
-        - LOG_LINES=${LOG_LINES}
+        - LOG_LINES=${LOG_LINES:-9999}
         - MAILCOW_HOSTNAME=${MAILCOW_HOSTNAME}
-        - MAILCOW_PASS_SCHEME=${MAILCOW_PASS_SCHEME}
-        - ACL_ANYONE=${ACL_ANYONE}
-        - ALLOW_ADMIN_EMAIL_LOGIN=${ALLOW_ADMIN_EMAIL_LOGIN}
-        - IPV4_NETWORK=${IPV4_NETWORK}
-        - SOGO_EXPIRE_SESSION=${SOGO_EXPIRE_SESSION}
-        - SKIP_SOGO=${SKIP_SOGO}
-        - MASTER=${MASTER}
-        - REDIS_SLAVEOF_IP=${REDIS_SLAVEOF_IP}
-        - REDIS_SLAVEOF_PORT=${REDIS_SLAVEOF_PORT}
-      deploy:
-        replicas: 1
+        - MAILCOW_PASS_SCHEME=${MAILCOW_PASS_SCHEME:-BLF-CRYPT}
+        - ACL_ANYONE=${ACL_ANYONE:-disallow}
+        - ALLOW_ADMIN_EMAIL_LOGIN=${ALLOW_ADMIN_EMAIL_LOGIN:-n}
+        - IPV4_NETWORK=${IPV4_NETWORK:-172.22.1}
+        - SOGO_EXPIRE_SESSION=${SOGO_EXPIRE_SESSION:-480}
+        - SKIP_SOGO=${SKIP_SOGO:-n}
+        - MASTER=${MASTER:-y}
+        - REDIS_SLAVEOF_IP=${REDIS_SLAVEOF_IP:-}
+        - REDIS_SLAVEOF_PORT=${REDIS_SLAVEOF_PORT:-}
       dns:
-        - ${IPV4_NETWORK}.254
+        - ${IPV4_NETWORK:-172.22.1}.254
       volumes:
         - ./data/hooks/sogo:/hooks:Z
         - ./data/conf/sogo/:/etc/sogo/:z
@@ -213,9 +205,10 @@ services:
         ofelia.job-exec.sogo_eautoreply.command: "/bin/bash -c \"[[ $${MASTER} == y ]] && /usr/local/bin/gosu sogo /usr/sbin/sogo-tool update-autoreply -p /etc/sogo/sieve.creds || exit 0\""
         ofelia.job-exec.sogo_backup.schedule: "@every 24h"
         ofelia.job-exec.sogo_backup.command: "/bin/bash -c \"[[ $${MASTER} == y ]] && /usr/local/bin/gosu sogo /usr/sbin/sogo-tool backup /sogo_backup ALL || exit 0\""
+      restart: always
       networks:
         mailcow-network:
-          ipv4_address: ${IPV4_NETWORK}.248
+          ipv4_address: ${IPV4_NETWORK:-172.22.1}.248
           aliases:
             - sogo
 
@@ -223,12 +216,8 @@ services:
       image: mailcow/dovecot:1.161
       depends_on:
         - mysql-mailcow
-      deploy:
-        replicas: 1
-        placement:
-          constraints: [node.role == manager]
       dns:
-        - ${IPV4_NETWORK}.254
+        - ${IPV4_NETWORK:-172.22.1}.254
       cap_add:
         - NET_BIND_SERVICE
       volumes:
@@ -245,32 +234,33 @@ services:
         - rspamd-vol-1:/var/lib/rspamd:z
         - mysql-socket-vol-1:/var/run/mysqld/:z
       environment:
-        - DOVECOT_MASTER_USER=${DOVECOT_MASTER_USER}
-        - DOVECOT_MASTER_PASS=${DOVECOT_MASTER_PASS}
-        - LOG_LINES=${LOG_LINES}
+        - DOVECOT_MASTER_USER=${DOVECOT_MASTER_USER:-}
+        - DOVECOT_MASTER_PASS=${DOVECOT_MASTER_PASS:-}
+        - LOG_LINES=${LOG_LINES:-9999}
         - DBNAME=${DBNAME}
         - DBUSER=${DBUSER}
         - DBPASS=${DBPASS}
         - TZ=${TZ}
         - MAILCOW_HOSTNAME=${MAILCOW_HOSTNAME}
-        - MAILCOW_PASS_SCHEME=${MAILCOW_PASS_SCHEME}
-        - IPV4_NETWORK=${IPV4_NETWORK}
-        - ALLOW_ADMIN_EMAIL_LOGIN=${ALLOW_ADMIN_EMAIL_LOGIN}
-        - MAILDIR_GC_TIME=${MAILDIR_GC_TIME}
-        - ACL_ANYONE=${ACL_ANYONE}
-        - SKIP_SOLR=${SKIP_SOLR}
-        - MAILDIR_SUB=${MAILDIR_SUB}
-        - MASTER=${MASTER}
-        - REDIS_SLAVEOF_IP=${REDIS_SLAVEOF_IP}
-        - REDIS_SLAVEOF_PORT=${REDIS_SLAVEOF_PORT}
-        - COMPOSE_PROJECT_NAME=${COMPOSE_PROJECT_NAME}
+        - MAILCOW_PASS_SCHEME=${MAILCOW_PASS_SCHEME:-BLF-CRYPT}
+        - IPV4_NETWORK=${IPV4_NETWORK:-172.22.1}
+        - ALLOW_ADMIN_EMAIL_LOGIN=${ALLOW_ADMIN_EMAIL_LOGIN:-n}
+        - MAILDIR_GC_TIME=${MAILDIR_GC_TIME:-7200}
+        - ACL_ANYONE=${ACL_ANYONE:-disallow}
+        - SKIP_SOLR=${SKIP_SOLR:-y}
+        - MAILDIR_SUB=${MAILDIR_SUB:-}
+        - MASTER=${MASTER:-y}
+        - REDIS_SLAVEOF_IP=${REDIS_SLAVEOF_IP:-}
+        - REDIS_SLAVEOF_PORT=${REDIS_SLAVEOF_PORT:-}
+        - COMPOSE_PROJECT_NAME=${COMPOSE_PROJECT_NAME:-mailcow-dockerized}
       ports:
-        - ${DOVEADM_PORT}:12345
-        - ${IMAP_PORT}:143
-        - ${IMAPS_PORT}:993
-        - ${POP_PORT}:110
-        - ${POPS_PORT}:995
-        - ${SIEVE_PORT}:4190
+        - "${DOVEADM_PORT:-127.0.0.1:19991}:12345"
+        - "${IMAP_PORT:-143}:143"
+        - "${IMAPS_PORT:-993}:993"
+        - "${POP_PORT:-110}:110"
+        - "${POPS_PORT:-995}:995"
+        - "${SIEVE_PORT:-4190}:4190"
+      restart: always
       tty: true
       labels:
         ofelia.enabled: "true"
@@ -298,7 +288,7 @@ services:
           hard: 40000
       networks:
         mailcow-network:
-          ipv4_address: ${IPV4_NETWORK}.250
+          ipv4_address: ${IPV4_NETWORK:-172.22.1}.250
           aliases:
             - dovecot
 
@@ -306,8 +296,6 @@ services:
       image: mailcow/postfix:1.66
       depends_on:
         - mysql-mailcow
-      deploy:
-        replicas: 1
       volumes:
         - ./data/hooks/postfix:/hooks:Z
         - ./data/conf/postfix:/opt/postfix/conf:z
@@ -317,32 +305,32 @@ services:
         - rspamd-vol-1:/var/lib/rspamd:z
         - mysql-socket-vol-1:/var/run/mysqld/:z
       environment:
-        - LOG_LINES=${LOG_LINES}
+        - LOG_LINES=${LOG_LINES:-9999}
         - TZ=${TZ}
         - DBNAME=${DBNAME}
         - DBUSER=${DBUSER}
         - DBPASS=${DBPASS}
-        - REDIS_SLAVEOF_IP=${REDIS_SLAVEOF_IP}
-        - REDIS_SLAVEOF_PORT=${REDIS_SLAVEOF_PORT}
+        - REDIS_SLAVEOF_IP=${REDIS_SLAVEOF_IP:-}
+        - REDIS_SLAVEOF_PORT=${REDIS_SLAVEOF_PORT:-}
         - MAILCOW_HOSTNAME=${MAILCOW_HOSTNAME}
       cap_add:
         - NET_BIND_SERVICE
       ports:
-        - "${SMTP_PORT}:25"
-        - "${SMTPS_PORT}:465"
-        - "${SUBMISSION_PORT}:587"
+        - "${SMTP_PORT:-25}:25"
+        - "${SMTPS_PORT:-465}:465"
+        - "${SUBMISSION_PORT:-587}:587"
+      restart: always
       dns:
-        - ${IPV4_NETWORK}.254
+        - ${IPV4_NETWORK:-172.22.1}.254
       networks:
         mailcow-network:
-          ipv4_address: ${IPV4_NETWORK}.253
+          ipv4_address: ${IPV4_NETWORK:-172.22.1}.253
           aliases:
             - postfix
 
     memcached-mailcow:
       image: memcached:alpine
-      deploy:
-        replicas: 1
+      restart: always
       environment:
         - TZ=${TZ}
       networks:
@@ -357,7 +345,7 @@ services:
         - redis-mailcow
       image: nginx:mainline-alpine
       dns:
-        - ${IPV4_NETWORK}.254
+        - ${IPV4_NETWORK:-172.22.1}.254
       command: /bin/sh -c "envsubst < /etc/nginx/conf.d/templates/listen_plain.template > /etc/nginx/conf.d/listen_plain.active &&
         envsubst < /etc/nginx/conf.d/templates/listen_ssl.template > /etc/nginx/conf.d/listen_ssl.active &&
         envsubst < /etc/nginx/conf.d/templates/sogo.template > /etc/nginx/conf.d/sogo.active &&
@@ -371,12 +359,14 @@ services:
         until ping rspamd -c1 > /dev/null; do sleep 1; done &&
         exec nginx -g 'daemon off;'"
       environment:
+        - HTTPS_PORT=${HTTPS_PORT:-443}
+        - HTTP_PORT=${HTTP_PORT:-80}
         - MAILCOW_HOSTNAME=${MAILCOW_HOSTNAME}
-        - IPV4_NETWORK=${IPV4_NETWORK}
+        - IPV4_NETWORK=${IPV4_NETWORK:-172.22.1}
         - TZ=${TZ}
-        - SKIP_SOGO=${SKIP_SOGO}
-        - ALLOW_ADMIN_EMAIL_LOGIN=${ALLOW_ADMIN_EMAIL_LOGIN}
-        - ADDITIONAL_SERVER_NAMES=${ADDITIONAL_SERVER_NAMES}
+        - SKIP_SOGO=${SKIP_SOGO:-n}
+        - ALLOW_ADMIN_EMAIL_LOGIN=${ALLOW_ADMIN_EMAIL_LOGIN:-n}
+        - ADDITIONAL_SERVER_NAMES=${ADDITIONAL_SERVER_NAMES:-}
       volumes:
         - ./data/web:/web:ro,z
         - ./data/conf/rspamd/dynmaps:/dynmaps:ro,z
@@ -385,14 +375,10 @@ services:
         - ./data/conf/rspamd/meta_exporter:/meta_exporter:ro,z
         - sogo-web-vol-1:/usr/lib/GNUstep/SOGo/:z
       ports:
-        - 80:80
-        - 443:443
-      deploy:
-        replicas: 1
-        placement:
-          constraints: [node.role == manager]
+        - "${HTTPS_BIND:-:}:${HTTPS_PORT:-443}:${HTTPS_PORT:-443}"
+        - "${HTTP_BIND:-:}:${HTTP_PORT:-80}:${HTTP_PORT:-80}"
+      restart: always
       networks:
-        portainer_agent_network:
         mailcow-network:
           aliases:
             - nginx
@@ -402,7 +388,7 @@ services:
         - nginx-mailcow
       image: mailcow/acme:1.81
       dns:
-        - ${IPV4_NETWORK}.254
+        - ${IPV4_NETWORK:-172.22.1}.254
       environment:
         - LOG_LINES=${LOG_LINES:-9999}
         - ACME_CONTACT=${ACME_CONTACT:-}
@@ -429,8 +415,7 @@ services:
         - ./data/assets/ssl:/var/lib/acme/:z
         - ./data/assets/ssl-example:/var/lib/ssl-example/:ro,Z
         - mysql-socket-vol-1:/var/run/mysqld/:z
-      deploy:
-        replicas: 1
+      restart: always
       networks:
         mailcow-network:
           aliases:
@@ -445,34 +430,34 @@ services:
         - sogo-mailcow
         - php-fpm-mailcow
         - redis-mailcow
-      deploy:
-        replicas: 1
+      restart: always
+      privileged: true
       environment:
         - TZ=${TZ}
-        - IPV4_NETWORK=${IPV4_NETWORK}
-        - IPV6_NETWORK=${IPV6_NETWORK}
+        - IPV4_NETWORK=${IPV4_NETWORK:-172.22.1}
+        - IPV6_NETWORK=${IPV6_NETWORK:-fd4d:6169:6c63:6f77::/64}
         - SNAT_TO_SOURCE=${SNAT_TO_SOURCE:-n}
         - SNAT6_TO_SOURCE=${SNAT6_TO_SOURCE:-n}
         - REDIS_SLAVEOF_IP=${REDIS_SLAVEOF_IP:-}
         - REDIS_SLAVEOF_PORT=${REDIS_SLAVEOF_PORT:-}
+      network_mode: "host"
       volumes:
         - /lib/modules:/lib/modules:ro
 
     watchdog-mailcow:
       image: mailcow/watchdog:1.96
       dns:
-        - ${IPV4_NETWORK}.254
+        - ${IPV4_NETWORK:-172.22.1}.254
       tmpfs:
         - /tmp
-      deploy:
-        replicas: 1
       volumes:
         - rspamd-vol-1:/var/lib/rspamd:z
         - mysql-socket-vol-1:/var/run/mysqld/:z
         - postfix-vol-1:/var/spool/postfix:z
         - ./data/assets/ssl:/etc/ssl/mail/:ro,z
+      restart: always
       environment:
-        - IPV6_NETWORK=${IPV6_NETWORK}
+        - IPV6_NETWORK=${IPV6_NETWORK:-fd4d:6169:6c63:6f77::/64}
         - LOG_LINES=${LOG_LINES:-9999}
         - TZ=${TZ}
         - DBNAME=${DBNAME}
@@ -488,7 +473,7 @@ services:
         - WATCHDOG_VERBOSE=${WATCHDOG_VERBOSE:-n}
         - MAILCOW_HOSTNAME=${MAILCOW_HOSTNAME}
         - COMPOSE_PROJECT_NAME=${COMPOSE_PROJECT_NAME:-mailcow-dockerized}
-        - IPV4_NETWORK=${IPV4_NETWORK}
+        - IPV4_NETWORK=${IPV4_NETWORK:-172.22.1}
         - IP_BY_DOCKER_API=${IP_BY_DOCKER_API:-0}
         - CHECK_UNBOUND=${CHECK_UNBOUND:-1}
         - SKIP_CLAMD=${SKIP_CLAMD:-n}
@@ -523,15 +508,17 @@ services:
 
     dockerapi-mailcow:
       image: mailcow/dockerapi:1.41
+      security_opt:
+        - label=disable
+      restart: always
+      oom_kill_disable: true
       dns:
-        - ${IPV4_NETWORK}.254
+        - ${IPV4_NETWORK:-172.22.1}.254
       environment:
         - DBROOT=${DBROOT}
         - TZ=${TZ}
       volumes:
         - /var/run/docker.sock:/var/run/docker.sock:ro
-      deploy:
-        replicas: 1
       networks:
         mailcow-network:
           aliases:
@@ -539,12 +526,11 @@ services:
 
     solr-mailcow:
       image: mailcow/solr:1.8.1
+      restart: always
       volumes:
         - solr-vol-1:/opt/solr/server/solr/dovecot-fts/data:Z
       ports:
-        - ${SOLR_PORT}:8983
-      deploy:
-        replicas: 1
+        - "${SOLR_PORT:-127.0.0.1:18983}:8983"
       environment:
         - TZ=${TZ}
         - SOLR_HEAP=${SOLR_HEAP:-1024}
@@ -556,6 +542,7 @@ services:
 
     olefy-mailcow:
       image: mailcow/olefy:1.9
+      restart: always
       environment:
         - TZ=${TZ}
         - OLEFY_BINDADDRESS=0.0.0.0
@@ -566,8 +553,6 @@ services:
         - OLEFY_LOGLVL=20
         - OLEFY_MINLENGTH=500
         - OLEFY_DEL_TMP=1
-      deploy:
-        replicas: 1
       networks:
         mailcow-network:
           aliases:
@@ -575,6 +560,7 @@ services:
 
     ofelia-mailcow:
       image: mcuadros/ofelia:latest
+      restart: always
       command: daemon --docker
       environment:
         - TZ=${TZ}
@@ -583,8 +569,8 @@ services:
         - dovecot-mailcow
       labels:
         ofelia.enabled: "true"
-      deploy:
-        replicas: 1
+      security_opt:
+        - label=disable
       volumes:
         - /var/run/docker.sock:/var/run/docker.sock:ro
       networks:
@@ -592,38 +578,47 @@ services:
           aliases:
             - ofelia
 
-#    ipv6nat-mailcow:
-#      depends_on:
-#        - unbound-mailcow
-#        - mysql-mailcow
-#        - redis-mailcow
-#        - clamd-mailcow
-#        - rspamd-mailcow
-#        - php-fpm-mailcow
-#        - sogo-mailcow
-#        - dovecot-mailcow
-#        - postfix-mailcow
-#        - memcached-mailcow
-#        - nginx-mailcow
-#        - acme-mailcow
-#        - netfilter-mailcow
-#        - watchdog-mailcow
-#        - dockerapi-mailcow
-#        - solr-mailcow
-#      environment:
-#        - TZ=${TZ}
-#      image: robbertkl/ipv6nat
-#      deploy:
-#        replicas: 1
-#      volumes:
-#        - /var/run/docker.sock:/var/run/docker.sock:ro
-#        - /lib/modules:/lib/modules:ro
+    ipv6nat-mailcow:
+      depends_on:
+        - unbound-mailcow
+        - mysql-mailcow
+        - redis-mailcow
+        - clamd-mailcow
+        - rspamd-mailcow
+        - php-fpm-mailcow
+        - sogo-mailcow
+        - dovecot-mailcow
+        - postfix-mailcow
+        - memcached-mailcow
+        - nginx-mailcow
+        - acme-mailcow
+        - netfilter-mailcow
+        - watchdog-mailcow
+        - dockerapi-mailcow
+        - solr-mailcow
+      environment:
+        - TZ=${TZ}
+      image: robbertkl/ipv6nat
+      security_opt:
+        - label=disable
+      restart: always
+      privileged: true
+      network_mode: "host"
+      volumes:
+        - /var/run/docker.sock:/var/run/docker.sock:ro
+        - /lib/modules:/lib/modules:ro
 
 networks:
-  portainer_agent_network:
-    external: true
   mailcow-network:
-    driver: overlay
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: br-mailcow
+    enable_ipv6: true
+    ipam:
+      driver: default
+      config:
+        - subnet: ${IPV4_NETWORK:-172.22.1}.0/24
+        - subnet: ${IPV6_NETWORK:-fd4d:6169:6c63:6f77::/64}
 
 volumes:
   vmail-vol-1:
