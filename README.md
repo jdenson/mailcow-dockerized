@@ -1,3 +1,7 @@
+# THIS IS A WORK IN PROGRESS - NOT PRODUCTION READY!
+## This is a personal project to adapt mailcow-dockerized to work in Docker Swarm.
+#
+#
 # mailcow: dockerized - 🐮 + 🐋 = 💕
 
 ## We stand with 🇺🇦
