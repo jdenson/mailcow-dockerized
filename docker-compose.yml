@@ -392,7 +392,6 @@ services:
         placement:
           constraints: [node.role == manager]
       networks:
-        portainer_agent_network:
         mailcow-network:
           aliases:
             - nginx
@@ -457,6 +456,10 @@ services:
         - REDIS_SLAVEOF_PORT=${REDIS_SLAVEOF_PORT:-}
       volumes:
         - /lib/modules:/lib/modules:ro
+      networks:
+        mailcow-network:
+          aliases:
+            - netfilter
 
     watchdog-mailcow:
       image: mailcow/watchdog:1.96
@@ -620,8 +623,6 @@ services:
 #        - /lib/modules:/lib/modules:ro
 
 networks:
-  portainer_agent_network:
-    external: true
   mailcow-network:
     driver: overlay
 
